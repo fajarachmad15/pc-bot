@@ -146,7 +146,7 @@ def run_coa_bot():
         with col1:
             item_dibeli = st.text_input("Item yg dibeli:", placeholder="Contoh: Aqua Galon")
         with col2:
-            digunakan_untuk = st.text_input("Digunakan Untuk:", placeholder="Contoh: Minum karyawan,")
+            digunakan_untuk = st.text_input("Digunakan Untuk:", placeholder="Contoh: Minum karyawan")
         
         pph_faktur = st.radio("Potong PPh / Dapat Faktur Pajak?", ("No", "Yes"), index=0, horizontal=True)
         submitted = st.form_submit_button("Cari Rekomendasi COA")
