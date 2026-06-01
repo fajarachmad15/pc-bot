@@ -63,8 +63,8 @@ def get_ai_recommendation(item, kegunaan, pph, df_database):
     # Ubah database menjadi string agar bisa dibaca AI
     db_string = df_database.to_csv(index=False)
     
-    # Gunakan Gemini 1.5 Flash yang lebih canggih memahami sinonim
-    model = genai.GenerativeModel("models/gemini-2.5-flash")
+    # Gunakan Gemini 3.1 Flash-Lite untuk kuota lebih besar
+    model = genai.GenerativeModel("models/gemini-3.1-flash-lite")
     
     # Prompt yang jauh lebih luwes, tidak menggunakan aturan Tahap-Tahap yang kaku
     gemini_prompt = f"""
