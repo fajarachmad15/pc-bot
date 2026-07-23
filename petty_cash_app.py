@@ -2,7 +2,7 @@ import os
 import streamlit as st
 import gspread
 import pandas as pd
-import google.generativeai as genai
+from google import genai
 
 # ==========================================================
 # === KONFIGURASI HALAMAN ===
@@ -34,6 +34,9 @@ def login_form():
                 except KeyError:
                     st.error("Kredensial aplikasi belum di-setting di secrets.toml")
                     return
+                except Exception as e:
+                    st.error(f"Error saat membaca secrets: {e}")
+                    return
 
                 if username == correct_user and password == correct_pass:
                     st.session_state.authenticated = True
@@ -43,7 +46,7 @@ def login_form():
                     st.error("Username atau Password salah.")
 
 # ==========================================================
-# === FUNGSI AMBIL DATA SHEETS (MENIRU PROMO BOT) ===
+# === FUNGSI AMBIL DATA SHEETS ===
 # ==========================================================
 @st.cache_data(ttl=600)
 def get_database_df(_gc, sheet_key):
@@ -59,12 +62,9 @@ def get_database_df(_gc, sheet_key):
 # ==========================================================
 # === OTAK AI (LUWES & PINTAR) ===
 # ==========================================================
-def get_ai_recommendation(item, kegunaan, pph, df_database):
+def get_ai_recommendation(item, kegunaan, pph, df_database, api_key):
     # Ubah database menjadi string agar bisa dibaca AI
     db_string = df_database.to_csv(index=False)
-    
-    # Gunakan Gemini 3.1 Flash-Lite untuk kuota lebih besar
-    model = genai.GenerativeModel("models/gemini-3.1-flash-lite")
     
     # Prompt yang jauh lebih luwes, tidak menggunakan aturan Tahap-Tahap yang kaku
     gemini_prompt = f"""
@@ -98,7 +98,11 @@ def get_ai_recommendation(item, kegunaan, pph, df_database):
     """
 
     try:
-        response = model.generate_content(gemini_prompt)
+        client = genai.Client(api_key=api_key)
+        response = client.models.generate_content(
+            model='gemini-3.5-flash-lite',
+            contents=gemini_prompt
+        )
         return response.text.strip()
     except Exception as e:
         return f"Terjadi error saat menghubungi AI: {e}"
@@ -112,7 +116,6 @@ def run_coa_bot():
     if not API_KEY:
         st.error("❌ API key Gemini tidak ditemukan.")
         st.stop()
-    genai.configure(api_key=API_KEY)
 
     if "gcp_service_account" not in st.secrets:
         st.error("❌ Service account Google Sheets tidak ditemukan.")
@@ -156,7 +159,7 @@ def run_coa_bot():
             st.warning("Mohon isi kedua kolom (Item & Digunakan Untuk).")
         else:
             with st.spinner("Menganalisa dan mencari COA yang tepat..."):
-                hasil_ai = get_ai_recommendation(item_dibeli, digunakan_untuk, pph_faktur, df_coa)
+                hasil_ai = get_ai_recommendation(item_dibeli, digunakan_untuk, pph_faktur, df_coa, API_KEY)
                 
                 st.subheader("Hasil Rekomendasi:")
                 # Menampilkan hasil baris per baris agar link URL bisa diklik
@@ -169,4 +172,5 @@ def run_coa_bot():
 # ==========================================================
 # === TITIK MASUK APLIKASI ===
 # ==========================================================
-login_form()
+if __name__ == "__main__":
+    login_form()
