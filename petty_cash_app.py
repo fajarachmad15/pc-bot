@@ -1,4 +1,5 @@
 import os
+import hmac
 import streamlit as st
 import gspread
 import pandas as pd
@@ -6,6 +7,7 @@ from google import genai
 
 # ==========================================================
 # === KONFIGURASI HALAMAN ===
+# HARUS diletakkan di bagian paling atas sebelum render Streamlit lainnya
 # ==========================================================
 st.set_page_config(page_title="Asisten Kasir Petty Cash", layout="wide")
 
@@ -28,17 +30,17 @@ def login_form():
             submitted = st.form_submit_button("Login")
 
             if submitted:
-                try:
-                    correct_user = st.secrets["app_credentials"]["APP_USER"]
-                    correct_pass = st.secrets["app_credentials"]["APP_PASS"]
-                except KeyError:
-                    st.error("Kredensial aplikasi belum di-setting di secrets.toml")
-                    return
-                except Exception as e:
-                    st.error(f"Error saat membaca secrets: {e}")
+                # Penanganan st.secrets yang aman dari KeyError/AttributeError
+                app_creds = st.secrets.get("app_credentials", {})
+                correct_user = app_creds.get("APP_USER")
+                correct_pass = app_creds.get("APP_PASS")
+
+                if not correct_user or not correct_pass:
+                    st.error("❌ Kredensial (APP_USER / APP_PASS) belum dikonfigurasi di secrets.toml.")
                     return
 
-                if username == correct_user and password == correct_pass:
+                # Menggunakan timing-safe comparison untuk keamanan autentikasi
+                if hmac.compare_digest(username, correct_user) and hmac.compare_digest(password, correct_pass):
                     st.session_state.authenticated = True
                     st.success("Login berhasil! Memuat aplikasi...")
                     st.rerun()
@@ -46,27 +48,38 @@ def login_form():
                     st.error("Username atau Password salah.")
 
 # ==========================================================
-# === FUNGSI AMBIL DATA SHEETS ===
+# === FUNGSI AMBIL DATA SHEETS & CACHING ===
 # ==========================================================
 @st.cache_data(ttl=600)
-def get_database_df(_gc, sheet_key):
+def get_database_df(gcp_dict, sheet_key):
+    """
+    Mengambil data dari Google Sheets dengan caching 10 menit.
+    Membuat koneksi gspread baru di dalam cache untuk mencegah error token terputus/stale.
+    """
     try:
-        # Mengambil sheet index 0 (tab pertama)
-        sheet = _gc.open_by_key(sheet_key).get_worksheet(0)
-        df = pd.DataFrame(sheet.get_all_records())
-        return df
+        gc = gspread.service_account_from_dict(gcp_dict)
+        sheet = gc.open_by_key(sheet_key).get_worksheet(0)
+        records = sheet.get_all_records()
+        if not records:
+            # Fallback jika header/baris kosong atau terkelola via get_all_values
+            data = sheet.get_all_values()
+            if data and len(data) > 1:
+                return pd.DataFrame(data[1:], columns=data[0])
+            return pd.DataFrame()
+        return pd.DataFrame(records)
     except Exception as e:
-        st.error(f"❌ Gagal memuat data Sheets. Error: {e}")
-        st.stop()
+        raise RuntimeError(f"Gagal memuat data Google Sheets: {e}")
 
 # ==========================================================
-# === OTAK AI (LUWES & PINTAR) ===
+# === OTAK AI (GEMINI) ===
 # ==========================================================
 def get_ai_recommendation(item, kegunaan, pph, df_database, api_key):
-    # Ubah database menjadi string agar bisa dibaca AI
+    if df_database.empty:
+        return "⚠️ Database COA kosong atau gagal dimuat. Tidak dapat memproses rekomendasi."
+
+    # Ubah database menjadi string CSV agar bisa dibaca AI
     db_string = df_database.to_csv(index=False)
     
-    # Prompt yang jauh lebih luwes, tidak menggunakan aturan Tahap-Tahap yang kaku
     gemini_prompt = f"""
     Kamu adalah Asisten Kasir cerdas. Tugasmu mencari akun COA yang tepat dari database di bawah ini.
     
@@ -99,8 +112,9 @@ def get_ai_recommendation(item, kegunaan, pph, df_database, api_key):
 
     try:
         client = genai.Client(api_key=api_key)
+        # Gunakan nama model yang valid pada SDK Google GenAI (gemini-2.5-flash)
         response = client.models.generate_content(
-            model='gemini-3.5-flash-lite',
+            model='gemini-2.5-flash',
             contents=gemini_prompt
         )
         return response.text.strip()
@@ -114,27 +128,33 @@ def run_coa_bot():
     # --- 1. KONFIGURASI API & KREDENSIAL ---
     API_KEY = st.secrets.get("GEMINI_API_KEY") or os.environ.get("GEMINI_API_KEY")
     if not API_KEY:
-        st.error("❌ API key Gemini tidak ditemukan.")
+        st.error("❌ API key Gemini (GEMINI_API_KEY) tidak ditemukan di secrets.toml atau environment variables.")
         st.stop()
 
     if "gcp_service_account" not in st.secrets:
-        st.error("❌ Service account Google Sheets tidak ditemukan.")
+        st.error("❌ Kredensial 'gcp_service_account' tidak ditemukan di secrets.toml.")
         st.stop()
 
     try:
-        gcp = dict(st.secrets["gcp_service_account"])
-        gc = gspread.service_account_from_dict(gcp)
+        gcp_dict = dict(st.secrets["gcp_service_account"])
+        # Perbaiki newline pada private_key jika tersimpan sebagai string "\\n" di secrets.toml
+        if "private_key" in gcp_dict and isinstance(gcp_dict["private_key"], str):
+            gcp_dict["private_key"] = gcp_dict["private_key"].replace("\\n", "\n")
     except Exception as e:
-        st.error(f"❌ Gagal memuat kredensial GCP: {e}")
+        st.error(f"❌ Gagal memproses format kredensial GCP: {e}")
         st.stop()
 
     SHEET_KEY = st.secrets.get("SHEET_KEY")
     if not SHEET_KEY:
-        st.error("❌ SHEET_KEY tidak ditemukan.")
+        st.error("❌ SHEET_KEY tidak ditemukan di secrets.toml.")
         st.stop()
 
     # --- 2. AMBIL DATABASE ---
-    df_coa = get_database_df(gc, SHEET_KEY)
+    try:
+        df_coa = get_database_df(gcp_dict, SHEET_KEY)
+    except Exception as e:
+        st.error(f"❌ {e}")
+        st.stop()
 
     # --- 3. TAMPILAN UI ---
     st.title("🤖 Asisten Kasir Petty Cash")
@@ -162,15 +182,11 @@ def run_coa_bot():
                 hasil_ai = get_ai_recommendation(item_dibeli, digunakan_untuk, pph_faktur, df_coa, API_KEY)
                 
                 st.subheader("Hasil Rekomendasi:")
-                # Menampilkan hasil baris per baris agar link URL bisa diklik
-                for baris in hasil_ai.split('\n'):
-                    if "http://" in baris or "https://" in baris:
-                        st.markdown(baris)
-                    else:
-                        st.text(baris)
+                # Langsung tampilkan via st.markdown agar format teks rapi & link URL otomatis clickable
+                st.markdown(hasil_ai)
 
 # ==========================================================
 # === TITIK MASUK APLIKASI ===
 # ==========================================================
 if __name__ == "__main__":
-    login_form()
+    login_form()
