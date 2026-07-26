@@ -112,9 +112,9 @@ def get_ai_recommendation(item, kegunaan, pph, df_database, api_key):
 
     try:
         client = genai.Client(api_key=api_key)
-        # Gunakan nama model yang valid pada SDK Google GenAI (gemini-2.5-flash)
+        # Gunakan nama model yang valid pada SDK Google GenAI (gemini-3.5-flash-lite)
         response = client.models.generate_content(
-            model='gemini-2.5-flash',
+            model='gemini-3.5-flash-lite',
             contents=gemini_prompt
         )
         return response.text.strip()
@@ -189,4 +189,4 @@ def run_coa_bot():
 # === TITIK MASUK APLIKASI ===
 # ==========================================================
 if __name__ == "__main__":
-    login_form()
+    login_form()
