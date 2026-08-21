@@ -100,14 +100,21 @@ def get_ai_recommendation(item, kegunaan, pph, df_database, api_key):
        - Tambahkan teks ini di AWAL bagian Catatan: "- NPWP PT / Badan potong PPh 2% dari DPP\\n- NPWP Perorangan potong PPh 2.5% dari DPP\\n"
     4. Jika data benar-benar melenceng dan tidak ada di database, jawab saja: "Saya tidak dapat menemukan akun yang cocok untuk item tersebut."
     
-    FORMAT JAWABAN (WAJIB SEPERTI INI, JANGAN ADA TEKS LAIN):
-    Rekomendasi COA: [Isi COA]
-    No. G/L Account: [Isi G/L]
-    Catatan: [Isi Remark/Catatan. Rapikan sedikit jika kepanjangan, tapi jangan hilangkan aturan penting]
-    Approval: [Isi Approval]
-    Budget: [Isi Budget]
-    Profit Center: [Isi Profit Center]
-    Cost Center: [Isi Cost Center]
+    FORMAT JAWABAN (WAJIB SEPERTI INI, GUNAKAN FORMAT MARKDOWN, PASTIKAN ADA BARIS BARU/ENTER ANTAR POIN, JANGAN ADA TEKS LAIN):
+    **Rekomendasi COA:** [Isi COA]
+    
+    **No. G/L Account:** [Isi G/L]
+    
+    **Catatan:** 
+    [Isi Remark/Catatan. Format ulang isi catatan menjadi list / bullet points yang rapi dan sistematis. Hapus jika ada poin yang berulang atau membingungkan. Jangan hilangkan aturan penting]
+    
+    **Approval:** [Isi Approval]
+    
+    **Budget:** [Isi Budget]
+    
+    **Profit Center:** [Isi Profit Center]
+    
+    **Cost Center:** [Isi Cost Center]
     """
 
     try:
